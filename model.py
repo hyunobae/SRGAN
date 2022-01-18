@@ -41,56 +41,64 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.model = nn.Sequential()
-        self.model.append(
+
+        self.model = self.get_init_dis()
+
+        self.block1 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.block2 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.block3 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Conv2d(512, 1024, kernel_size=1)
+        self.fca = nn.LeakyReLU(0.2)
+        self.fc2 = nn.Conv2d(1024, 1, kernel_size=1)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        out = self.model(x).view(batch_size)
+        out = self.avgpool(out)
+        out = self.fc1(out)
+        out = self.fca(out)
+        out = self.fc2(out)
+        out = torch.sigmoid(out)
+        return out
+
+    def get_init_dis(self):
+        model = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2),
             nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(512, 1024, kernel_size=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(1024, 1, kernel_size=1)
         )
+        return model
 
-        # self.net = nn.Sequential(
-        #     nn.Conv2d(3, 64, kernel_size=3, padding=1),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
-        #     nn.BatchNorm2d(64),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(64, 128, kernel_size=3, padding=1),
-        #     nn.BatchNorm2d(128),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
-        #     nn.BatchNorm2d(128),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(128, 256, kernel_size=3, padding=1),
-        #     nn.BatchNorm2d(256),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
-        #     nn.BatchNorm2d(256),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(256, 512, kernel_size=3, padding=1),
-        #     nn.BatchNorm2d(512),
-        #     nn.LeakyReLU(0.2),
-        #
-        #     nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-        #     nn.BatchNorm2d(512),
-        #     nn.LeakyReLU(0.2),
-
-        #     nn.AdaptiveAvgPool2d(1), # globalAVGpooling2D same
-        #     nn.Conv2d(512, 1024, kernel_size=1),
-        #     nn.LeakyReLU(0.2),
-        #     nn.Conv2d(1024, 1, kernel_size=1)
-        # )
 
     def add_layer(self, model, fsize):
         in_= fsize
@@ -113,14 +121,9 @@ class Discriminator(nn.Module):
 
 
     def grow_network(self, size, iter):
-        if iter>=800000:#PG-GAN 800K
-            self.freeze_network(self.model)
-            # save model
 
 
-    def forward(self, x):
-        batch_size = x.size(0)
-        return torch.sigmoid(self.net(x).view(batch_size))
+
 
 
 class ResidualBlock(nn.Module):
