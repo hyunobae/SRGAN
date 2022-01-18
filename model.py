@@ -41,43 +41,82 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.net = nn.Sequential(
+        self.model = nn.Sequential()
+        self.model.append(
             nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2),
-
             nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
-
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
-
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
-
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(512, 1024, kernel_size=1),
             nn.LeakyReLU(0.2),
             nn.Conv2d(1024, 1, kernel_size=1)
         )
+
+        # self.net = nn.Sequential(
+        #     nn.Conv2d(3, 64, kernel_size=3, padding=1),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+        #     nn.BatchNorm2d(64),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(64, 128, kernel_size=3, padding=1),
+        #     nn.BatchNorm2d(128),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
+        #     nn.BatchNorm2d(128),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(128, 256, kernel_size=3, padding=1),
+        #     nn.BatchNorm2d(256),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
+        #     nn.BatchNorm2d(256),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(256, 512, kernel_size=3, padding=1),
+        #     nn.BatchNorm2d(512),
+        #     nn.LeakyReLU(0.2),
+        #
+        #     nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
+        #     nn.BatchNorm2d(512),
+        #     nn.LeakyReLU(0.2),
+
+        #     nn.AdaptiveAvgPool2d(1), # globalAVGpooling2D same
+        #     nn.Conv2d(512, 1024, kernel_size=1),
+        #     nn.LeakyReLU(0.2),
+        #     nn.Conv2d(1024, 1, kernel_size=1)
+        # )
+
+    def add_layer(self, model, fsize):
+        in_= fsize
+        out_ = fsize*2
+
+        model.append(nn.Conv2d(in_, out_, kernel_size=3, padding=1, name='cn1'))
+        model.append(nn.BatchNorm2d(out_))
+        model.append(nn.LeakyReLU(0.2))
+
+        model.append(nn.Conv2d(out_, out_, kernel_size=3, stride=2, padding=1))
+        model.append(nn.BatchNorm2d(out_))
+        model.append(nn.LeakyReLU(0.2))
+
+        return model
+
+    def freeze_network(self, model):
+        print('freeze network weights')
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+
+    def grow_network(self, size, iter):
+        if iter>=800000:#PG-GAN 800K
+            self.freeze_network(self.model)
+            # save model
+
 
     def forward(self, x):
         batch_size = x.size(0)
