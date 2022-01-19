@@ -13,9 +13,9 @@ class PixelNormLayer(nn.Module):
         return self.__class__.__name__
 
 
-class Concat(nn.Module):
+class Concatable(nn.Module):
     def __init__(self, layer1, layer2):
-        super(Concat, self).__init__()
+        super(Concatable, self).__init__()
         self.layer1 = layer1
         self.layer2 = layer2
 
