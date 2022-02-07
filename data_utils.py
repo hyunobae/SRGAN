@@ -1,3 +1,5 @@
+import os
+import random
 from os import listdir
 from os.path import join
 
@@ -39,12 +41,21 @@ def display_transform():
 
 
 class TrainDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, crop_size, upscale_factor):
+    def __init__(self, dataset_dir, crop_size, upscale_factor, batch_size):
         super(TrainDatasetFromFolder, self).__init__()
-        self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
+
+        self.dirlist = os.listdir(dataset_dir)
+        self.dirlen = len(self.dirlist)
+        self.image_filenames = []
+
+        for dir in self.dirlist:
+            for imglist in os.listdir(dataset_dir+'/'+dir):
+                self.image_filenames.append(dataset_dir+'/'+dir+'/'+imglist)
+
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
+
 
     def __getitem__(self, index):
         hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
@@ -59,7 +70,16 @@ class ValDatasetFromFolder(Dataset):
     def __init__(self, dataset_dir, upscale_factor):
         super(ValDatasetFromFolder, self).__init__()
         self.upscale_factor = upscale_factor
-        self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
+
+        self.dirlist = os.listdir(dataset_dir)
+        self.dirlen = len(self.dirlist)
+        self.image_filenames = []
+
+        for dir in self.dirlist:
+            for imglist in os.listdir(dataset_dir + '/' + dir):
+                self.image_filenames.append(dataset_dir + '/' + dir + '/' + imglist)
+
+
 
     def __getitem__(self, index):
         hr_image = Image.open(self.image_filenames[index])

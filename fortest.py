@@ -45,13 +45,39 @@ class Discriminator(nn.Module):
         self.fca = nn.LeakyReLU(0.2)
         self.fc2 = nn.Conv2d(1024, 1, kernel_size=1)
 
+        self.fc64 = nn.Conv2d(64,128, kernel_size=1)
+        self.fc64e = nn.Conv2d(128, 1, kernel_size=1)
+
+        self.fc128 = nn.Conv2d(128, 256, kernel_size=1)
+        self.fc128e = nn.Conv2d(256, 1, kernel_size=1)
+
+        self.fc256 = nn.Conv2d(256, 512, kernel_size=1)
+        self.fc256e = nn.Conv2d(512, 1, kernel_size=1)
+
     def forward(self, x):
-        batch_size = x.size(0)
-        out = self.model(x).view(batch_size)
+        out = self.model(x)
         out = self.avgpool(out)
-        out = self.fc1(out)
-        out = self.fca(out)
-        out = self.fc2(out)
+
+        if self.grow == 0:
+            out = self.fc64(out)
+            out = self.fca(out)
+            out = self.fc64e(out)
+
+        elif self.grow == 1:
+            out = self.fc128(out)
+            out = self.fca(out)
+            out = self.fc128e(out)
+
+        elif self.grow == 2:
+            out = self.fc256(out)
+            out = self.fca(out)
+            out = self.fc256e(out)
+
+        elif self.grow == 3:
+            out = self.fc1(out)
+            out = self.fca(out)
+            out = self.fc2(out)
+
         out = torch.sigmoid(out)
         return out
 
