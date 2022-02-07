@@ -13,18 +13,23 @@ from tqdm import tqdm
 import pytorch_ssim
 from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_transform
 from loss import GeneratorLoss
-from model import Generator, Discriminator
+from model import Generator
 import config
+from fortest import *
 
-def scheduler(cfg):
-    batch_size = cfg.batch_size
-    ttick = cfg.trans_tick
-    stick = cfg.stabile_tick
 
-    delta = 1.0/(2*ttick + 2*stick)
-    d_alpha = 1.0*batch_size/ttick/cfg.TICK
+# def scheduler(cfg, netD, fadein):
+#     batch_size = cfg.batch_size
+#     ttick = cfg.trans_tick
+#     stick = cfg.stabile_tick
+#
+#     delta = 1.0/(2*ttick + 2*stick)
+#     d_alpha = 1.0*batch_size/ttick/cfg.TICK
+#
+#     if cfg.is_fade == True: # fadein layer exist -> update alpha
+#         fadein.update_alpha(d_alpha)
 
-    if
+
 
 
 
@@ -44,6 +49,8 @@ parser.add_argument('--trans_tick', type=int, default=200)
 parser.add_argument('--stablie_tick', type=int, default=100)
 parser.add_argument('--is_fade', type=bool, default=False)
 parser.add_argument('--grow', type=int, default=0)
+parser.add_argument('--max_grow', type=int, default=3)
+parser.add_argument('--when_to_grow', type=int, default=400000) # discriminator 증가 언제
 
 
 if __name__ == '__main__':
@@ -54,6 +61,15 @@ if __name__ == '__main__':
     NUM_EPOCHS = opt.num_epochs
     batch_size = opt.batch_size
     count_image_number = 0
+    trns_tick = opt.trans_tick
+    stab_tick = opt.stabile_tick
+    is_fade = opt.is_fade
+    change_iter = opt.when_to_grow
+
+    delta = 1.0/(2*trns_tick+2*stab_tick)
+    d_alpha = 1.0*batch_size/trns_tick/opt.TICK
+
+    fadein = {'dis':is_fade}
 
     
     train_set = TrainDatasetFromFolder('data/DIV2K_train_HR', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
@@ -80,11 +96,14 @@ if __name__ == '__main__':
     for epoch in range(1, NUM_EPOCHS + 1):
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
+        if count_image_number >= change_iter:
+            netD.freeze_network()
+            netD.grow_network()
     
         netG.train()
         netD.train()
 
-        for data, target in train_bar:
+        for data, target in train_bar: # train epoch
             count_image_number += batch_size
             g_update_first = True
             running_results['batch_sizes'] += batch_size

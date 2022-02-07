@@ -90,7 +90,7 @@ class Discriminator(nn.Module):
         block = self.add_layer()
 
         new.add_module('concat', Concatable(new, block))
-        new.add_module('fadein', Fadein(self.config))
+        # new.add_module('fadein', Fadein(self.config))
 
         self.model = None
         self.model = new
@@ -115,26 +115,27 @@ class Discriminator(nn.Module):
 
     def add_layer(self):
         add = nn.Sequential()
-        model.add_module('inter_'+str(self.grow), add)
+        add.add_module('inter_'+str(self.grow), self.intermediate_layer())
         self.grow += 1
 
         return add
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('PGDSRGAN')  # progressive growing discriminator SRGAN
-
-    parser.add_argument('--fsize', default=128, type=int)
-    parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
-    parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
-                        help='super resolution upscale factor')
-    parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
-    parser.add_argument('--batch_size', default=64, type=int)
-    parser.add_argument('--TICK', type=int, default=1000)
-    parser.add_argument('--trans_tick', type=int, default=200)
-    parser.add_argument('--stablie_tick', type=int, default=100)
-    parser.add_argument('--is_fade', type=bool, default=False)
-    opt = parser.parse_args()
-
-    model = Discriminator(opt)
-    print(model)
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser('PGDSRGAN')  # progressive growing discriminator SRGAN
+#
+#     parser.add_argument('--fsize', default=128, type=int)
+#     parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
+#     parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
+#                         help='super resolution upscale factor')
+#     parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
+#     parser.add_argument('--batch_size', default=64, type=int)
+#     parser.add_argument('--TICK', type=int, default=1000)
+#     parser.add_argument('--trans_tick', type=int, default=200)
+#     parser.add_argument('--stablie_tick', type=int, default=100)
+#     parser.add_argument('--is_fade', type=bool, default=False)
+#     parser.add_argument('--grow', type=int, default=0)
+#     opt = parser.parse_args()
+#
+#     model = Discriminator(opt)
+#     print(model)
