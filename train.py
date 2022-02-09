@@ -42,7 +42,7 @@ parser.add_argument('--stabile_tick', type=int, default=100)
 parser.add_argument('--is_fade', type=bool, default=False)
 parser.add_argument('--grow', type=int, default=0)
 parser.add_argument('--max_grow', type=int, default=3)
-parser.add_argument('--when_to_grow', type=int, default=200)  # discriminator 증가 언제
+parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
 
 if __name__ == '__main__':
     opt = parser.parse_args()
@@ -63,9 +63,11 @@ if __name__ == '__main__':
 
     fadein = {'dis': is_fade}
 
-    train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR,
+    train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE,
+                                       upscale_factor=UPSCALE_FACTOR,
                                        batch_size=batch_size)
-    val_set = ValDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/val/gt', upscale_factor=UPSCALE_FACTOR)
+    val_set = ValDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/val/gt',
+                                   upscale_factor=UPSCALE_FACTOR)
     train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, num_workers=1, batch_size=1, shuffle=False)
 
@@ -78,6 +80,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
+        print(netD)
         generator_criterion.cuda()
 
     optimizerG = optim.Adam(netG.parameters())
@@ -85,21 +88,27 @@ if __name__ == '__main__':
 
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
 
-    for epoch in range(1, NUM_EPOCHS + 1):
+    for epoch in range(1, NUM_EPOCHS+1):
+        epoch_flag = 0
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
-        if count_image_number >= change_iter and cur_grow<=opt.max_grow:
-            netD.freeze_network()
-            netD.grow_network()
-            cur_grow += 1
 
         netG.train()
         netD.train()
 
         for data, target in train_bar:  # train epoch
             count_image_number += batch_size
+
             g_update_first = True
             running_results['batch_sizes'] += batch_size
+
+            if epoch % 20 == 0 and cur_grow < opt.max_grow and epoch_flag==0:
+                netD.freeze_network()
+                netD.grow_network()
+                cur_grow += 1
+                netD.cuda()
+                epoch_flag=1
+                print(netD)
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
@@ -205,5 +214,5 @@ if __name__ == '__main__':
             data_frame = pd.DataFrame(
                 data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
                       'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
-                index=range(1, epoch + 1))
+                index=range(1, epoch+1))
             data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')

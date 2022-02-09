@@ -20,7 +20,7 @@ def deepcopy_module(module, target):
 
 def get_name(model):
     names = []
-    for key, val in model.state_dict().iteritems():
+    for key, val in model.state_dict().items():
         name = key.split('.')[0]
         if not name in names:
             names.append(name)
@@ -32,54 +32,54 @@ class Discriminator(nn.Module):
     def __init__(self, config):
         super(Discriminator, self).__init__()
 
-        self.model = self.get_init_dis()
         self.config = config
-        self.fsize = 128
+        self.fsize = 64
         self.module_names = []
         self.bz = config.batch_size
         self.is_fade = self.config.is_fade
         self.grow = self.config.grow
-
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.fc1 = nn.Conv2d(512, 1024, kernel_size=1)
-        self.fca = nn.LeakyReLU(0.2)
-        self.fc2 = nn.Conv2d(1024, 1, kernel_size=1)
-
-        self.fc64 = nn.Conv2d(64,128, kernel_size=1)
-        self.fc64e = nn.Conv2d(128, 1, kernel_size=1)
-
-        self.fc128 = nn.Conv2d(128, 256, kernel_size=1)
-        self.fc128e = nn.Conv2d(256, 1, kernel_size=1)
-
-        self.fc256 = nn.Conv2d(256, 512, kernel_size=1)
-        self.fc256e = nn.Conv2d(512, 1, kernel_size=1)
+        self.dense_layer = None
+        self.model = self.get_init_dis()
 
     def forward(self, x):
         out = self.model(x)
-        out = self.avgpool(out)
-
-        if self.grow == 0:
-            out = self.fc64(out)
-            out = self.fca(out)
-            out = self.fc64e(out)
-
-        elif self.grow == 1:
-            out = self.fc128(out)
-            out = self.fca(out)
-            out = self.fc128e(out)
-
-        elif self.grow == 2:
-            out = self.fc256(out)
-            out = self.fca(out)
-            out = self.fc256e(out)
-
-        elif self.grow == 3:
-            out = self.fc1(out)
-            out = self.fca(out)
-            out = self.fc2(out)
-
         out = torch.sigmoid(out)
         return out
+
+    def dense_block(self, grow):
+        if grow == 0:
+            dense = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(64, 128, kernel_size=1),
+                nn.LeakyReLU(0.2),
+                nn.Conv2d(128, 1, kernel_size=1)
+            )
+
+        elif grow == 1:
+            dense = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(128, 256, kernel_size=1),
+                nn.LeakyReLU(0.2),
+                nn.Conv2d(256, 1, kernel_size=1)
+            )
+
+        elif grow == 2:
+            dense = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(256, 512, kernel_size=1),
+                nn.LeakyReLU(0.2),
+                nn.Conv2d(512, 1, kernel_size=1)
+            )
+
+        elif grow == 3:
+            dense = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(512, 1024, kernel_size=1),
+                nn.LeakyReLU(0.2),
+                nn.Conv2d(1024, 1, kernel_size=1)
+            )
+
+        return dense
 
     def first_block(self):
         layers = nn.Sequential(nn.Conv2d(3, 64, kernel_size=3, padding=1),
@@ -93,6 +93,7 @@ class Discriminator(nn.Module):
     def get_init_dis(self):
         model = nn.Sequential()
         model.add_module('first_block', self.first_block())
+        model.add_module('dense', self.dense_block(self.grow))
         return model
 
     def freeze_network(self):
@@ -101,26 +102,21 @@ class Discriminator(nn.Module):
             param.requires_grad = False
 
     def grow_network(self):
-        print('grow discriminator')
+        print('grow discriminator and flush dense layer')
 
-        first_block = deepcopy_module(self.model, 'first_block') # 첫번째 block가져옴
+        first_block = deepcopy_module(self.model, 'first_block')  # 첫번째 block가져옴
 
-        new = nn.Sequential()
-        new.add_module('first_block', first_block)
-        names = get_name(self.model)
-        for name, module in self.model.named_children(): # 나머지 block 가져옴
-            if not name == 'first_block':
-                new.add_module(name, module)
-                new[-1].load_state_dict(module.state_dict())
+        for name, module in self.model.named_children():  # 나머지 block 가져옴
+            if not name == 'first_block' and 'inter_' in name:
+                first_block.add_module(name, module)
+                first_block[-1].load_state_dict(module.state_dict())
 
         block = self.add_layer()
-
-        new.add_module('concat', Concatable(new, block))
-        # new.add_module('fadein', Fadein(self.config))
+        first_block.add_module('inter_'+ str(self.grow), block)
+        first_block.add_module('dense', self.dense_block(self.grow))
 
         self.model = None
-        self.model = new
-        self.module_names = get_name(self.model)
+        self.model = first_block
         self.is_fade = True
 
     def intermediate_layer(self):
@@ -140,28 +136,6 @@ class Discriminator(nn.Module):
         return model
 
     def add_layer(self):
-        add = nn.Sequential()
-        add.add_module('inter_'+str(self.grow), self.intermediate_layer())
         self.grow += 1
 
-        return add
-
-
-# if __name__ == '__main__':
-#     parser = argparse.ArgumentParser('PGDSRGAN')  # progressive growing discriminator SRGAN
-#
-#     parser.add_argument('--fsize', default=128, type=int)
-#     parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
-#     parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
-#                         help='super resolution upscale factor')
-#     parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
-#     parser.add_argument('--batch_size', default=64, type=int)
-#     parser.add_argument('--TICK', type=int, default=1000)
-#     parser.add_argument('--trans_tick', type=int, default=200)
-#     parser.add_argument('--stablie_tick', type=int, default=100)
-#     parser.add_argument('--is_fade', type=bool, default=False)
-#     parser.add_argument('--grow', type=int, default=0)
-#     opt = parser.parse_args()
-#
-#     model = Discriminator(opt)
-#     print(model)
+        return self.intermediate_layer()
