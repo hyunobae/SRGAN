@@ -14,7 +14,8 @@ import pytorch_ssim
 from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_transform
 from loss import GeneratorLoss
 from model import Generator
-from fortest import *
+# from fortest import *
+from model import Discriminator
 
 # def scheduler(cfg, netD, fadein):
 #     batch_size = cfg.batch_size
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
-        print(netD)
+        # print(netD)
         generator_criterion.cuda()
 
     optimizerG = optim.Adam(netG.parameters())
@@ -102,13 +103,13 @@ if __name__ == '__main__':
             g_update_first = True
             running_results['batch_sizes'] += batch_size
 
-            if epoch % 20 == 0 and cur_grow < opt.max_grow and epoch_flag==0:
-                netD.freeze_network()
-                netD.grow_network()
-                cur_grow += 1
-                netD.cuda()
-                epoch_flag=1
-                print(netD)
+            # if epoch % 20 == 0 and cur_grow < opt.max_grow and epoch_flag==0:
+            #     netD.freeze_network()
+            #     netD.grow_network()
+            #     cur_grow += 1
+            #     netD.cuda()
+            #     epoch_flag=1
+            #     print(netD)
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
