@@ -16,6 +16,7 @@ from loss import GeneratorLoss
 from model import Generator
 # from fortest import *
 from model import Discriminator
+import time
 
 # def scheduler(cfg, netD, fadein):
 #     batch_size = cfg.batch_size
@@ -74,7 +75,8 @@ if __name__ == '__main__':
 
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
-    netD = Discriminator(opt)
+    #netD = Discriminator(opt)
+    netD = Discriminator()
     print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
     generator_criterion = GeneratorLoss()
 
@@ -88,6 +90,8 @@ if __name__ == '__main__':
     optimizerD = optim.Adam(netD.parameters())
 
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
+    
+    start = time.time()
 
     for epoch in range(1, NUM_EPOCHS+1):
         epoch_flag = 0
@@ -217,3 +221,6 @@ if __name__ == '__main__':
                       'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
                 index=range(1, epoch+1))
             data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
+
+    end = time.time()
+    print('time elapsed: ', end - start)
