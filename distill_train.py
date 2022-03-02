@@ -28,7 +28,7 @@ parser.add_argument('--fsize', default=128, type=int)
 parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
 parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
                     help='super resolution upscale factor')
-parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
+parser.add_argument('--num_epochs', default=80, type=int, help='train epoch number')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--TICK', type=int, default=1000)
 parser.add_argument('--trans_tick', type=int, default=200)
@@ -37,13 +37,13 @@ parser.add_argument('--is_fade', type=bool, default=False)
 parser.add_argument('--grow', type=int, default=0)
 parser.add_argument('--max_grow', type=int, default=3)
 parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
-parser.add_argument('--version', type=int, default=0)  # 1/4, 1/2, 1 -> 0, 1, 2로 주자
+parser.add_argument('--version', type=int, default=1)  # 1/4, 1/2, 1 -> 1, 2, 3로 주자
 
 
 def distill_loss(y, label, score, T, alpha):
     return nn.KLDivLoss()(F.log_softmax(y / T),
                           F.softmax(score / T)) * (T * T * 2.0 + alpha) + \
-           F.cross_entropy(y, label) * (1 - alpha)
+           F.binary_cross_entropy(y, label) * (1 - alpha)
 
 
 if __name__ == '__main__':
@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     fadein = {'dis': is_fade}
 
-    writer = writer.SummaryWriter()
+    writer = writer.SummaryWriter('runs/distill')
 
     train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
     # netD = Discriminator(opt)
-    netD = Discriminator(version)
+    netD = Discriminator(opt)
 
     print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
     generator_criterion = GeneratorLoss()
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
-        # print(netD)
+        print(netD)
         generator_criterion.cuda()
 
     optimizerG = optim.Adam(netG.parameters())
@@ -96,9 +96,12 @@ if __name__ == '__main__':
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
 
     start = time.time()
+    cnt = 0
+    ncnt = 0
 
     for epoch in range(1, NUM_EPOCHS + 1):
         epoch_flag = 0
+
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
 
@@ -111,11 +114,17 @@ if __name__ == '__main__':
             g_update_first = True
             running_results['batch_sizes'] += batch_size
 
-            if 15 <= epoch < 26 or 50 <= epoch <= 60:  # discriminator KD
+            if 15 < epoch <= 20 or 46 <= epoch <= 50:  # discriminator KD
                 epoch_flag = 1
-                opt.version = opt.version + 1
-                student = Discriminator(opt)
-                student.cuda()
+                if (epoch == 16 and cnt == 0) or (epoch == 46 and cnt==0):
+                    print("KD Phase start!")
+                    cnt = cnt + 1
+                    ncnt = 0
+                    opt.version = opt.version + 1
+                    student = Discriminator(opt)
+                    optimizersD = optim.Adam(student.parameters())
+                    print(student)
+                    student.cuda()
 
                 netG.eval()
                 netD.eval()
@@ -130,34 +139,42 @@ if __name__ == '__main__':
 
                 netD.zero_grad()
 
-                teacher_fake_out = netD(fake_img).mean()  # 학습해야함
-                student_fake_out = student(fake_img).mean()
+                teacher_fake_out = netD(fake_img).mean().reshape(1)  # 학습해야함
+                student_fake_out = student(fake_img).mean().reshape(1)
 
+                student_real_out = student(real_img).mean().reshape(1)
+                teacher_real_out = netD(real_img).mean().reshape(1)
 
+                one = torch.Tensor([1]).reshape(1)
+                one = one.cuda()
 
-                student_real_out = student(real_img).mean()
-                teacher_real_out = netD(real_img).mean()
+                zero = torch.Tensor([0]).reshape(1)
+                zero = zero.cuda()
 
-                distill_real_loss = distill_loss(student_real_out, 1, teacher_real_out, 5, 0.7)
-                distill_fake_loss = distill_loss(student_fake_out, 0, teacher_fake_out, 5, 0.7)
+                distill_real_loss = distill_loss(student_real_out, one, teacher_real_out, 5, 0.7)
+                distill_fake_loss = distill_loss(student_fake_out, zero, teacher_fake_out, 5, 0.7)
 
                 total_distill_loss = distill_real_loss + distill_fake_loss
                 optimizerD.zero_grad()
+                optimizersD.zero_grad()
                 writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
 
                 total_distill_loss.backward()
                 optimizerD.step()
+                optimizersD.step()
 
-                if epoch == 25 or epoch == 60:
-                    netD = student
-                    epoch_flag = 0
-
-
+            if (epoch == 20 and ncnt==0) or (epoch == 50 and ncnt==0) :
+                print('netD is dumped with Student\n')
+                netD = student
+                optimizerD = optimizersD
+                epoch_flag = 0
+                cnt = 0
+                ncnt = 1
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            else:
+            if epoch < 16 or epoch > 20 or epoch < 46 or epoch > 50:
                 real_img = Variable(target)
                 if torch.cuda.is_available():
                     real_img = real_img.cuda()
@@ -174,31 +191,36 @@ if __name__ == '__main__':
                 d_loss.backward(retain_graph=True)
                 optimizerD.step()
 
-            ############################
-            # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
-            ###########################
+                ############################
+                # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
+                ###########################
                 netG.zero_grad()
                 ## The two lines below are added to prevent runetime error in Google Colab ##
                 fake_img = netG(z)
                 fake_out = netD(fake_img).mean()
                 ##
                 g_loss = generator_criterion(fake_out, fake_img, real_img)
+                #                writer.add_scalar("loss/G+D_loss", {'G': g_loss, 'D': d_loss}, epoch)
+
                 g_loss.backward()
 
             if epoch_flag == 0:
-                writer.add_scalar("loss/G+D_loss", {'G': g_loss, 'D': d_loss}, epoch)
+                #                writer.add_scalar("loss/G+D_loss", {'G': g_loss, 'D': d_loss}, epoch)
 
                 fake_img = netG(z)
                 fake_out = netD(fake_img).mean()
 
                 optimizerG.step()
 
-            if epoch_flag==0:
+            if epoch_flag == 0:
                 # loss for current batch before optimization
                 running_results['g_loss'] += g_loss.item() * batch_size
                 running_results['d_loss'] += d_loss.item() * batch_size
                 running_results['d_score'] += real_out.item() * batch_size
                 running_results['g_score'] += fake_out.item() * batch_size
+
+                writer.add_scalar("loss/G_loss", running_results['g_loss'], epoch)
+                writer.add_scalar("loss/D_loss", running_results['d_loss'], epoch)
 
                 train_bar.set_description(desc='[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
                     epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
@@ -206,7 +228,7 @@ if __name__ == '__main__':
                     running_results['d_score'] / running_results['batch_sizes'],
                     running_results['g_score'] / running_results['batch_sizes']))
 
-        if epoch_flag==0:
+        if epoch_flag == 0:
             netG.eval()
             out_path = 'training_results/SRF_' + str(UPSCALE_FACTOR) + '/'
             if not os.path.exists(out_path):
@@ -237,8 +259,8 @@ if __name__ == '__main__':
                         desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
                             valing_results['psnr'], valing_results['ssim']))
 
-                    writer.add_scalar('PSNR/psnr_ssim', {'PSNR': valing_results['psnr'], 'SSIM': valing_results['ssim']},
-                                      epoch)
+                    writer.add_scalar('VAL/ssim', valing_results['psnr'], epoch)
+                    writer.add_scalar('VAL/ssim', valing_results['ssim'], epoch)
 
                     val_images.extend(
                         [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
@@ -263,13 +285,15 @@ if __name__ == '__main__':
             results['psnr'].append(valing_results['psnr'])
             results['ssim'].append(valing_results['ssim'])
 
-            if epoch % 10 == 0 and epoch != 0:
-                out_path = 'statistics/'
-                data_frame = pd.DataFrame(
-                    data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
-                          'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
-                    index=range(1, epoch + 1))
-                data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
+            # if epoch % 10 == 0 and epoch != 0:
+            #     out_path = 'statistics/'
+            #     data_frame = pd.DataFrame(
+            #         data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
+            #               'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
+            #         index=range(1, epoch + 1))
+            #     data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
 
+    writer.flush()
+    writer.close()
     end = time.time()
     print('time elapsed: ', end - start)
