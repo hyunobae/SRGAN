@@ -103,10 +103,13 @@ if __name__ == '__main__':
         epoch_flag = 0
 
         train_bar = tqdm(train_loader)
-        running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
+        running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0, 'distill_loss': 0}
 
         netG.train()
         netD.train()
+
+        if epoch_flag==1:
+            writer.add_scalar("loss/KD_loss", running_results['distill_loss'] /  running_results['batch_sizes'], epoch-1)
 
         for data, target in train_bar:  # train epoch (lr, hr)
             count_image_number += batch_size
@@ -114,7 +117,7 @@ if __name__ == '__main__':
             g_update_first = True
             running_results['batch_sizes'] += batch_size
 
-            if 15 < epoch <= 20 or 46 <= epoch <= 50:  # discriminator KD
+            if 15 < epoch <= 17 or 45 < epoch <= 47:  # discriminator KD
                 epoch_flag = 1
                 if (epoch == 16 and cnt == 0) or (epoch == 46 and cnt==0):
                     print("KD Phase start!")
@@ -157,13 +160,15 @@ if __name__ == '__main__':
                 total_distill_loss = distill_real_loss + distill_fake_loss
                 optimizerD.zero_grad()
                 optimizersD.zero_grad()
-                writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
+                #writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
+
+                running_results['distill_loss'] += total_distill_loss
 
                 total_distill_loss.backward()
                 optimizerD.step()
                 optimizersD.step()
 
-            if (epoch == 20 and ncnt==0) or (epoch == 50 and ncnt==0) :
+            if (epoch == 18 and ncnt==0) or (epoch == 48 and ncnt==0) : # +1
                 print('netD is dumped with Student\n')
                 netD = student
                 optimizerD = optimizersD
@@ -174,7 +179,8 @@ if __name__ == '__main__':
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            if epoch < 16 or epoch > 20 or epoch < 46 or epoch > 50:
+            if epoch < 16 or epoch > 17 or epoch < 46 or epoch > 47:
+
                 real_img = Variable(target)
                 if torch.cuda.is_available():
                     real_img = real_img.cuda()
@@ -200,27 +206,16 @@ if __name__ == '__main__':
                 fake_out = netD(fake_img).mean()
                 ##
                 g_loss = generator_criterion(fake_out, fake_img, real_img)
-                #                writer.add_scalar("loss/G+D_loss", {'G': g_loss, 'D': d_loss}, epoch)
 
                 g_loss.backward()
 
-            if epoch_flag == 0:
-                #                writer.add_scalar("loss/G+D_loss", {'G': g_loss, 'D': d_loss}, epoch)
-
-                fake_img = netG(z)
-                fake_out = netD(fake_img).mean()
-
                 optimizerG.step()
 
-            if epoch_flag == 0:
                 # loss for current batch before optimization
                 running_results['g_loss'] += g_loss.item() * batch_size
                 running_results['d_loss'] += d_loss.item() * batch_size
                 running_results['d_score'] += real_out.item() * batch_size
                 running_results['g_score'] += fake_out.item() * batch_size
-
-                writer.add_scalar("loss/G_loss", running_results['g_loss'], epoch)
-                writer.add_scalar("loss/D_loss", running_results['d_loss'], epoch)
 
                 train_bar.set_description(desc='[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
                     epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
@@ -259,8 +254,8 @@ if __name__ == '__main__':
                         desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
                             valing_results['psnr'], valing_results['ssim']))
 
-                    writer.add_scalar('VAL/ssim', valing_results['psnr'], epoch)
-                    writer.add_scalar('VAL/ssim', valing_results['ssim'], epoch)
+                    # writer.add_scalar('VAL/psnr', valing_results['psnr'], epoch)
+                    # writer.add_scalar('VAL/ssim', valing_results['ssim'], epoch)
 
                     val_images.extend(
                         [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
@@ -275,8 +270,8 @@ if __name__ == '__main__':
                     index += 1
 
             # save model parameters
-            torch.save(netG.state_dict(), 'epochs/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-            torch.save(netD.state_dict(), 'epochs/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+            torch.save(netG.state_dict(), 'epochs/original-80/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+            torch.save(netD.state_dict(), 'epochs/original-80/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
             # save loss\scores\psnr\ssim
             results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
             results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
@@ -284,6 +279,11 @@ if __name__ == '__main__':
             results['g_score'].append(running_results['g_score'] / running_results['batch_sizes'])
             results['psnr'].append(valing_results['psnr'])
             results['ssim'].append(valing_results['ssim'])
+
+            writer.add_scalar('VAL/psnr', valing_results['psnr'], epoch)
+            writer.add_scalar('VAL/ssim', valing_results['ssim'], epoch)
+            writer.add_scalar("loss/G_loss", running_results['g_loss'] / running_results['batch_sizes'], epoch)
+            writer.add_scalar("loss/D_loss", running_results['d_loss'] / running_results['batch_sizes'], epoch)
 
             # if epoch % 10 == 0 and epoch != 0:
             #     out_path = 'statistics/'

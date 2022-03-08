@@ -17,7 +17,7 @@ from model import Generator
 # from fortest import *
 from model import Discriminator
 import time
-
+from torch.utils.tensorboard import SummaryWriter
 # def scheduler(cfg, netD, fadein):
 #     batch_size = cfg.batch_size
 #     ttick = cfg.trans_tick
@@ -36,7 +36,7 @@ parser.add_argument('--fsize', default=128, type=int)
 parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
 parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
                     help='super resolution upscale factor')
-parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
+parser.add_argument('--num_epochs', default=80, type=int, help='train epoch number')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--TICK', type=int, default=1000)
 parser.add_argument('--trans_tick', type=int, default=200)
@@ -64,6 +64,8 @@ if __name__ == '__main__':
     d_alpha = 1.0 * batch_size / trns_tick / opt.TICK
 
     fadein = {'dis': is_fade}
+
+    writer = SummaryWriter('runs/original')
 
     train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
@@ -204,8 +206,8 @@ if __name__ == '__main__':
                 index += 1
 
         # save model parameters
-        torch.save(netG.state_dict(), 'epochs/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-        torch.save(netD.state_dict(), 'epochs/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netG.state_dict(), 'epochs/original-80/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netD.state_dict(), 'epochs/original-80/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
         # save loss\scores\psnr\ssim
         results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
@@ -214,13 +216,18 @@ if __name__ == '__main__':
         results['psnr'].append(valing_results['psnr'])
         results['ssim'].append(valing_results['ssim'])
 
-        if epoch % 10 == 0 and epoch != 0:
-            out_path = 'statistics/'
-            data_frame = pd.DataFrame(
-                data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
-                      'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
-                index=range(1, epoch+1))
-            data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
+        writer.add_scalar("VAL/psnr", valing_results['psnr'])
+        writer.add_scalar("VAL/ssim", valing_results['ssim'])
+        writer.add_scalar("loss/g_loss", running_results['g_loss'] / running_results['batch_sizes'], epoch)
+        writer.add_scalar("loss/d_loss", running_results['d_loss'] / running_results['batch_sizes'], epoch)
+
+        # if epoch % 10 == 0 and epoch != 0:
+        #     out_path = 'statistics/'
+        #     data_frame = pd.DataFrame(
+        #         data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
+        #               'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
+        #         index=range(1, epoch+1))
+        #     data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
 
     end = time.time()
     print('time elapsed: ', end - start)
