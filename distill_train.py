@@ -38,6 +38,9 @@ parser.add_argument('--grow', type=int, default=0)
 parser.add_argument('--max_grow', type=int, default=3)
 parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
 parser.add_argument('--version', type=int, default=1)  # 1/4, 1/2, 1 -> 1, 2, 3로 주자
+parser.add_argument('--KD_range', type=int, default=5)
+parser.add_argument('--kd1', type=int, default=16)
+parser.add_argument('--kd2', type=int, default=46)
 
 
 def distill_loss(y, label, score, T, alpha):
@@ -59,6 +62,9 @@ if __name__ == '__main__':
     is_fade = opt.is_fade
     change_iter = opt.when_to_grow
     version = opt.version
+    kd_range = opt.KD_range
+    kd1 = opt.kd1
+    kd2 = opt.kd2
     cur_grow = 0
 
     delta = 1.0 / (2 * trns_tick + 2 * stab_tick)
@@ -98,6 +104,7 @@ if __name__ == '__main__':
     start = time.time()
     cnt = 0
     ncnt = 0
+    distill_batch = 0
 
     for epoch in range(1, NUM_EPOCHS + 1):
         epoch_flag = 0
@@ -108,18 +115,20 @@ if __name__ == '__main__':
         netG.train()
         netD.train()
 
-        if epoch_flag==1:
-            writer.add_scalar("loss/KD_loss", running_results['distill_loss'] /  running_results['batch_sizes'], epoch-1)
+        if kd1 < epoch <= kd1 + kd_range + 1 or kd2 < epoch <= kd2 + kd_range + 1:
+            writer.add_scalar("loss/KD_loss", running_results['distill_loss'] / distill_batch,
+                              epoch - 1)
 
-        for data, target in train_bar:  # train epoch (lr, hr)
+        for i, data, target in enumerate(train_bar):  # train epoch (lr, hr)
             count_image_number += batch_size
 
             g_update_first = True
             running_results['batch_sizes'] += batch_size
 
-            if 15 < epoch <= 17 or 45 < epoch <= 47:  # discriminator KD
+            if kd1 <= epoch <= (kd1 + kd_range - 1) or kd2 <= epoch <= (kd2 + kd_range - 1):  # discriminator KD
                 epoch_flag = 1
-                if (epoch == 16 and cnt == 0) or (epoch == 46 and cnt==0):
+                distill_batch += batch_size
+                if (epoch == kd1 and cnt == 0) or (epoch == kd2 and cnt == 0):
                     print("KD Phase start!")
                     cnt = cnt + 1
                     ncnt = 0
@@ -160,7 +169,7 @@ if __name__ == '__main__':
                 total_distill_loss = distill_real_loss + distill_fake_loss
                 optimizerD.zero_grad()
                 optimizersD.zero_grad()
-                #writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
+                # writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
 
                 running_results['distill_loss'] += total_distill_loss
 
@@ -168,18 +177,19 @@ if __name__ == '__main__':
                 optimizerD.step()
                 optimizersD.step()
 
-            if (epoch == 18 and ncnt==0) or (epoch == 48 and ncnt==0) : # +1
-                print('netD is dumped with Student\n')
-                netD = student
-                optimizerD = optimizersD
-                epoch_flag = 0
-                cnt = 0
-                ncnt = 1
+                if (epoch == kd1 + kd_range -1 and ncnt == 0 and i == len(train_loader) - 1) or (
+                        epoch == kd2 + kd_range -1 and ncnt == 0 and i == len(train_loader) - 1):  # +1
+                    print('netD is dumped with Student\n')
+                    netD = student
+                    optimizerD = optimizersD
+                    epoch_flag = 0
+                    cnt = 0
+                    ncnt = 1
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            if epoch < 16 or epoch > 17 or epoch < 46 or epoch > 47:
+            if epoch < kd1 or epoch > kd1 + kd_range -1  or epoch < kd2 or epoch > kd2 + kd_range-1:
 
                 real_img = Variable(target)
                 if torch.cuda.is_available():
@@ -225,7 +235,7 @@ if __name__ == '__main__':
 
         if epoch_flag == 0:
             netG.eval()
-            out_path = 'training_results/SRF_' + str(UPSCALE_FACTOR) + '/'
+            out_path = 'training_results/SRF_' + '/'
             if not os.path.exists(out_path):
                 os.makedirs(out_path)
 
@@ -254,12 +264,9 @@ if __name__ == '__main__':
                         desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
                             valing_results['psnr'], valing_results['ssim']))
 
-                    # writer.add_scalar('VAL/psnr', valing_results['psnr'], epoch)
-                    # writer.add_scalar('VAL/ssim', valing_results['ssim'], epoch)
-
                     val_images.extend(
                         [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
-                         display_transform()(sr.data.cpu().squeeze(0))])
+                         display_transform()(sr.data.cpu().squeeze(0))])  # bicubic, gt, sr
                 val_images = torch.stack(val_images)
                 val_images = torch.chunk(val_images, val_images.size(0) // 15)
                 val_save_bar = tqdm(val_images, desc='[saving training results]')
@@ -285,13 +292,6 @@ if __name__ == '__main__':
             writer.add_scalar("loss/G_loss", running_results['g_loss'] / running_results['batch_sizes'], epoch)
             writer.add_scalar("loss/D_loss", running_results['d_loss'] / running_results['batch_sizes'], epoch)
 
-            # if epoch % 10 == 0 and epoch != 0:
-            #     out_path = 'statistics/'
-            #     data_frame = pd.DataFrame(
-            #         data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
-            #               'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
-            #         index=range(1, epoch + 1))
-            #     data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
 
     writer.flush()
     writer.close()
