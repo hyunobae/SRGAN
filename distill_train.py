@@ -38,7 +38,7 @@ parser.add_argument('--grow', type=int, default=0)
 parser.add_argument('--max_grow', type=int, default=3)
 parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
 parser.add_argument('--version', type=int, default=0)  # 1/4, 1/2, 1 -> 1, 2, 3로 주자
-parser.add_argument('--KD_range', type=int, default=5)
+parser.add_argument('--kd_range', type=int, default=5)
 parser.add_argument('--kd1', type=int, default=16)
 parser.add_argument('--kd2', type=int, default=46)
 
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     is_fade = opt.is_fade
     change_iter = opt.when_to_grow
     version = opt.version
-    kd_range = opt.KD_range
+    kd_range = opt.kd_range
     kd1 = opt.kd1
     kd2 = opt.kd2
     cur_grow = 0
@@ -74,10 +74,10 @@ if __name__ == '__main__':
 
     writer = writer.SummaryWriter('runs/distill')
 
-    train_set = TrainDatasetFromFolder('C:/Users/USER/Desktop/jay/data/train/gt', crop_size=CROP_SIZE,
+    train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
                                        batch_size=batch_size)
-    val_set = ValDatasetFromFolder('C:/Users/USER/Desktop/jay/data/val/gt',
+    val_set = ValDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/val/gt',
                                    upscale_factor=UPSCALE_FACTOR)
     train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, num_workers=1, batch_size=1, shuffle=False)
@@ -193,7 +193,8 @@ if __name__ == '__main__':
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            if epoch < kd1 or epoch > kd1 + kd_range - 1 or epoch < kd2 or epoch > kd2 + kd_range - 1:
+            if (epoch < kd1 or kd1 + kd_range - 1 < epoch) or (
+                    kd1 + kd_range - 1 < epoch < kd2 or epoch > kd2 + kd_range - 1):
 
                 real_img = Variable(target)
                 if torch.cuda.is_available():
@@ -237,7 +238,8 @@ if __name__ == '__main__':
                 #     running_results['d_score'] / running_results['batch_sizes'],
                 #     running_results['g_score'] / running_results['batch_sizes']))
 
-        if epoch < kd1 or epoch > kd1 + kd_range - 1 or epoch < kd2 or epoch > kd2 + kd_range - 1:
+        if (epoch < kd1 or kd1 + kd_range - 1 < epoch) or (
+                kd1 + kd_range - 1 < epoch < kd2 or epoch > kd2 + kd_range - 1):
             print('[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
                 epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
                 running_results['g_loss'] / running_results['batch_sizes'],
@@ -287,8 +289,8 @@ if __name__ == '__main__':
                     index += 1
 
             # save model parameters
-            torch.save(netG.state_dict(), 'epochs/alpha0.5/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-            torch.save(netD.state_dict(), 'epochs/alpha0.5/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+            torch.save(netG.state_dict(), 'epochs/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+            torch.save(netD.state_dict(), 'epochs/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
             # save loss\scores\psnr\ssim
             results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
             results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
