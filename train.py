@@ -15,9 +15,11 @@ from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_tra
 from loss import GeneratorLoss
 from model import Generator
 # from fortest import *
-from model import Discriminator
+# from model import Discriminator
+from distillmodel import Discriminator
 import time
 from torch.utils.tensorboard import SummaryWriter
+
 # def scheduler(cfg, netD, fadein):
 #     batch_size = cfg.batch_size
 #     ttick = cfg.trans_tick
@@ -36,7 +38,7 @@ parser.add_argument('--fsize', default=128, type=int)
 parser.add_argument('--crop_size', default=96, type=int, help='training images crop size')
 parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
                     help='super resolution upscale factor')
-parser.add_argument('--num_epochs', default=80, type=int, help='train epoch number')
+parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--TICK', type=int, default=1000)
 parser.add_argument('--trans_tick', type=int, default=200)
@@ -45,6 +47,7 @@ parser.add_argument('--is_fade', type=bool, default=False)
 parser.add_argument('--grow', type=int, default=0)
 parser.add_argument('--max_grow', type=int, default=3)
 parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
+parser.add_argument('--version', type=int, default=0)
 
 if __name__ == '__main__':
     opt = parser.parse_args()
@@ -59,26 +62,27 @@ if __name__ == '__main__':
     is_fade = opt.is_fade
     change_iter = opt.when_to_grow
     cur_grow = 0
+    version = opt.version
 
     delta = 1.0 / (2 * trns_tick + 2 * stab_tick)
     d_alpha = 1.0 * batch_size / trns_tick / opt.TICK
 
     fadein = {'dis': is_fade}
 
-    writer = SummaryWriter('runs/original')
+    writer = SummaryWriter('runs/distill')
 
     train_set = TrainDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/train/gt', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
                                        batch_size=batch_size)
     val_set = ValDatasetFromFolder('/home/knuvi/Desktop/hyunobae/BasicSR/datasets/val/gt',
                                    upscale_factor=UPSCALE_FACTOR)
-    train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(dataset=train_set, num_workers=6, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, num_workers=1, batch_size=1, shuffle=False)
 
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
-    #netD = Discriminator(opt)
-    netD = Discriminator()
+    # netD = Discriminator()
+    netD = Discriminator(opt)
     print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
     generator_criterion = GeneratorLoss()
 
@@ -92,10 +96,10 @@ if __name__ == '__main__':
     optimizerD = optim.Adam(netD.parameters())
 
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
-    
+
     start = time.time()
 
-    for epoch in range(1, NUM_EPOCHS+1):
+    for epoch in range(1, NUM_EPOCHS + 1):
         epoch_flag = 0
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
@@ -109,13 +113,15 @@ if __name__ == '__main__':
             g_update_first = True
             running_results['batch_sizes'] += batch_size
 
-            # if epoch % 20 == 0 and cur_grow < opt.max_grow and epoch_flag==0:
-            #     netD.freeze_network()
-            #     netD.grow_network()
-            #     cur_grow += 1
-            #     netD.cuda()
-            #     epoch_flag=1
-            #     print(netD)
+            if (epoch == 20 or epoch == 55) and cur_grow < opt.max_grow and epoch_flag == 0:
+                print(f"PGD {opt.version}")
+                epoch_flag = 1
+                opt.version = opt.version + 1
+                netD = Discriminator(opt)
+                optimizerD = optim.Adam(netD.parameters())
+                print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
+                netD.cuda()
+                cur_grow += 1
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
@@ -206,8 +212,8 @@ if __name__ == '__main__':
                 index += 1
 
         # save model parameters
-        torch.save(netG.state_dict(), 'epochs/original-80/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-        torch.save(netD.state_dict(), 'epochs/original-80/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netG.state_dict(), 'epochs/pgd/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netD.state_dict(), 'epochs/pgd/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
         # save loss\scores\psnr\ssim
         results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
@@ -216,8 +222,8 @@ if __name__ == '__main__':
         results['psnr'].append(valing_results['psnr'])
         results['ssim'].append(valing_results['ssim'])
 
-        writer.add_scalar("VAL/psnr", valing_results['psnr'])
-        writer.add_scalar("VAL/ssim", valing_results['ssim'])
+        writer.add_scalar("VAL/psnr", valing_results['psnr'], epoch)
+        writer.add_scalar("VAL/ssim", valing_results['ssim'], epoch)
         writer.add_scalar("loss/g_loss", running_results['g_loss'] / running_results['batch_sizes'], epoch)
         writer.add_scalar("loss/d_loss", running_results['d_loss'] / running_results['batch_sizes'], epoch)
 

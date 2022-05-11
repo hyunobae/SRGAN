@@ -117,9 +117,9 @@ if __name__ == '__main__':
         netG.train()
         netD.train()
 
-        if kd1 < epoch <= kd1 + kd_range + 1 or kd2 < epoch <= kd2 + kd_range + 1:
-            writer.add_scalar("loss/KD_loss", running_results['distill_loss'] / distill_batch,
-                              epoch - 1)
+        # if kd1 < epoch <= kd1 + kd_range + 1 or kd2 < epoch <= kd2 + kd_range + 1:
+        #     writer.add_scalar("loss/KD_loss", running_results['distill_loss'] / distill_batch,
+        #                       epoch - 1)
 
         i = 0
         for data, target in train_bar:  # train epoch (lr, hr)
@@ -137,14 +137,14 @@ if __name__ == '__main__':
                     cnt = cnt + 1
                     ncnt = 0
                     opt.version = opt.version + 1
-                    student = Discriminator(opt)
-                    optimizersD = optim.Adam(student.parameters())
+                    netD = Discriminator(opt)
+                    optimizerD = optim.Adam(student.parameters())
                     print(student)
-                    student.cuda()
+                    netD.cuda()
 
-                netG.eval()
-                netD.eval()
-                student.train()
+                # netG.eval()
+                # netD.eval()
+                # student.train()
                 real_img = Variable(target)
                 real_img = real_img.cuda()
 
@@ -155,37 +155,37 @@ if __name__ == '__main__':
 
                 netD.zero_grad()
 
-                teacher_fake_out = netD(fake_img).mean().reshape(1)  # 학습해야함
-                student_fake_out = student(fake_img).mean().reshape(1)
+                # teacher_fake_out = netD(fake_img).mean().reshape(1)  # 학습해야함
+                # student_fake_out = student(fake_img).mean().reshape(1)
+                #
+                # student_real_out = student(real_img).mean().reshape(1)
+                # teacher_real_out = netD(real_img).mean().reshape(1)
 
-                student_real_out = student(real_img).mean().reshape(1)
-                teacher_real_out = netD(real_img).mean().reshape(1)
+                # one = torch.Tensor([1]).reshape(1)
+                # one = one.cuda()
+                #
+                # zero = torch.Tensor([0]).reshape(1)
+                # zero = zero.cuda()
 
-                one = torch.Tensor([1]).reshape(1)
-                one = one.cuda()
-
-                zero = torch.Tensor([0]).reshape(1)
-                zero = zero.cuda()
-
-                distill_real_loss = distill_loss(student_real_out, one, teacher_real_out, 5, 0.5)
-                distill_fake_loss = distill_loss(student_fake_out, zero, teacher_fake_out, 5, 0.5)
-
-                total_distill_loss = distill_real_loss + distill_fake_loss
+                # distill_real_loss = distill_loss(student_real_out, one, teacher_real_out, 5, 0.7)
+                # distill_fake_loss = distill_loss(student_fake_out, zero, teacher_fake_out, 5, 0.7)
+                #
+                # total_distill_loss = distill_real_loss + distill_fake_loss
                 optimizerD.zero_grad()
-                optimizersD.zero_grad()
+                # optimizersD.zero_grad()
                 # writer.add_scalar("loss/distill_loss", total_distill_loss, epoch)
 
-                running_results['distill_loss'] += total_distill_loss
+                # running_results['distill_loss'] += total_distill_loss
 
-                total_distill_loss.backward()
+                # total_distill_loss.backward()
                 optimizerD.step()
-                optimizersD.step()
+                # optimizersD.step()
 
                 if (epoch == kd1 + kd_range - 1 and ncnt == 0 and i == len(train_loader)) or (
                         epoch == kd2 + kd_range - 1 and ncnt == 0 and i == len(train_loader)):  # +1
                     print('netD is dumped with Student\n')
-                    netD = student
-                    optimizerD = optimizersD
+                    # netD = student
+                    # optimizerD = optimizersD
                     epoch_flag = 0
                     cnt = 0
                     ncnt = 1
@@ -193,8 +193,7 @@ if __name__ == '__main__':
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            if (epoch < kd1 or kd1 + kd_range - 1 < epoch) or (
-                    kd1 + kd_range - 1 < epoch < kd2 or epoch > kd2 + kd_range - 1):
+            if epoch < kd1 or (kd1 + kd_range - 1 < epoch < kd2) or epoch > kd2 + kd_range - 1:
 
                 real_img = Variable(target)
                 if torch.cuda.is_available():
@@ -238,8 +237,7 @@ if __name__ == '__main__':
                 #     running_results['d_score'] / running_results['batch_sizes'],
                 #     running_results['g_score'] / running_results['batch_sizes']))
 
-        if (epoch < kd1 or kd1 + kd_range - 1 < epoch) or (
-                kd1 + kd_range - 1 < epoch < kd2 or epoch > kd2 + kd_range - 1):
+        if epoch < kd1 or (kd1 + kd_range - 1 < epoch < kd2) or epoch > kd2 + kd_range - 1:
             print('[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
                 epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
                 running_results['g_loss'] / running_results['batch_sizes'],
