@@ -15,7 +15,7 @@ from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_tra
 from loss import GeneratorLoss
 from model import Generator
 # from fortest import *
-from model import Discriminator
+from distillmodel import Discriminator
 import time
 from torch.utils.tensorboard import SummaryWriter
 
@@ -27,7 +27,7 @@ parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
                     help='super resolution upscale factor')
 parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
 parser.add_argument('--batch_size', default=64, type=int)
-parser.add_argument('--grow', type=int, default=0)
+parser.add_argument('--grow', type=int, default=1)
 parser.add_argument('--max_grow', type=int, default=3)
 parser.add_argument('--when_to_grow', type=int, default=256)  # discriminator 증가 언제
 parser.add_argument('--version', type=int, default=0)
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     cur_grow = 0
     version = opt.version
 
-    writer = SummaryWriter('runs/imgorig')
+    writer = SummaryWriter('runs/half')
 
     train_set = TrainDatasetFromFolder('data/train/', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
@@ -56,12 +56,10 @@ if __name__ == '__main__':
 
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
-    netD = Discriminator()
+    netD = Discriminator(opt)
     print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
     generator_criterion = GeneratorLoss()
 
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
@@ -178,8 +176,8 @@ if __name__ == '__main__':
                 index += 1
 
         # save model parameters
-        torch.save(netG.state_dict(), 'epochs/imgorig/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-        torch.save(netD.state_dict(), 'epochs/imgorig/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netG.state_dict(), 'epochs/half/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netD.state_dict(), 'epochs/half/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
         # save loss\scores\psnr\ssim
         results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])

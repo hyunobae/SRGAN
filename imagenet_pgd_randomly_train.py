@@ -15,9 +15,10 @@ from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_tra
 from loss import GeneratorLoss
 from model import Generator
 # from fortest import *
-from model import Discriminator
+from distillmodel import Discriminator
 import time
 from torch.utils.tensorboard import SummaryWriter
+import random
 
 parser = argparse.ArgumentParser('PGDSRGAN')  # progressive growing discriminator SRGAN
 
@@ -44,7 +45,7 @@ if __name__ == '__main__':
     cur_grow = 0
     version = opt.version
 
-    writer = SummaryWriter('runs/imgorig')
+    writer = SummaryWriter('runs/randomly')
 
     train_set = TrainDatasetFromFolder('data/train/', crop_size=CROP_SIZE,
                                        upscale_factor=UPSCALE_FACTOR,
@@ -56,12 +57,10 @@ if __name__ == '__main__':
 
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
-    netD = Discriminator()
+    netD = Discriminator(opt)
     print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
     generator_criterion = GeneratorLoss()
 
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
@@ -88,6 +87,17 @@ if __name__ == '__main__':
 
             g_update_first = True
             running_results['batch_sizes'] += batch_size
+
+            if (epoch == 20 or epoch==40 or epoch == 60 or epoch==80) and epoch_flag == 0:
+                g = [0, 1, 2]
+                g.remove(cur_grow)
+                cur_grow = random.choice(g)
+                print(f"PGD {opt.version}")
+                epoch_flag = 1
+                netD = Discriminator(opt)
+                optimizerD = optim.Adam(netD.parameters())
+                print('# discriminator parameters:', sum(param.numel() for param in netD.parameters()))
+                netD.cuda()
 
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
@@ -178,8 +188,8 @@ if __name__ == '__main__':
                 index += 1
 
         # save model parameters
-        torch.save(netG.state_dict(), 'epochs/imgorig/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-        torch.save(netD.state_dict(), 'epochs/imgorig/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netG.state_dict(), 'epochs/randomly/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        torch.save(netD.state_dict(), 'epochs/randomly/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
         # save loss\scores\psnr\ssim
         results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])

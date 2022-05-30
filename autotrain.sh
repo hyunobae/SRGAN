@@ -1,0 +1,5 @@
+python train.py
+python imagenet_pgd_train.py
+python imagenet_pgd_quarter_train.py
+python imagenet_pgd_half_train.py
+python imagenet_pgd_randomly_train.py

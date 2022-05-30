@@ -45,12 +45,10 @@ class TrainDatasetFromFolder(Dataset):
         super(TrainDatasetFromFolder, self).__init__()
 
         self.dirlist = os.listdir(dataset_dir)
-        self.dirlen = len(self.dirlist)
         self.image_filenames = []
 
-        for dir in self.dirlist:
-            for imglist in os.listdir(dataset_dir + '/' + dir):
-                self.image_filenames.append(dataset_dir + '/' + dir + '/' + imglist)
+        for img in self.dirlist:
+            self.image_filenames.append(dataset_dir + img)
 
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
@@ -73,10 +71,10 @@ class ValDatasetFromFolder(Dataset):
         self.dirlist = os.listdir(dataset_dir)
         self.dirlen = len(self.dirlist)
         self.image_filenames = []
+        
+        for img in self.dirlist:
+            self.image_filenames.append(dataset_dir + img)
 
-        for dir in self.dirlist:
-            for imglist in os.listdir(dataset_dir + '/' + dir):
-                self.image_filenames.append(dataset_dir + '/' + dir + '/' + imglist)
 
     def __getitem__(self, index):
         hr_image = Image.open(self.image_filenames[index])
